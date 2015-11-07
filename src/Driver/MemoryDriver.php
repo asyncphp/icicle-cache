@@ -2,7 +2,6 @@
 
 namespace Icicle\Cache\Driver;
 
-use Generator;
 use Icicle\Cache\Driver;
 use Icicle\Concurrent\Forking\Fork;
 use Icicle\Coroutine;
@@ -81,8 +80,6 @@ class MemoryDriver implements Driver
 
     /**
      * @param array $parameters
-     *
-     * @return Generator
      */
     private function handleForget(array $parameters)
     {
@@ -147,8 +144,6 @@ class MemoryDriver implements Driver
 
     /**
      * @param array $parameters
-     *
-     * @return Generator
      */
     private function handleGet(array $parameters)
     {
