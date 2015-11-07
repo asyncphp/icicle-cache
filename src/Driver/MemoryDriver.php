@@ -12,10 +12,19 @@ use Icicle\Promise\PromiseInterface;
 
 class MemoryDriver implements Driver
 {
+    /**
+     * @var array
+     */
     private $cache = [];
 
+    /**
+     * @var array
+     */
     private $waiting = [];
 
+    /**
+     * @var array
+     */
     private $busy = [];
 
     /**
@@ -84,6 +93,7 @@ class MemoryDriver implements Driver
                     }
 
                     $this->cache[$key] = $value;
+                    unset($this->busy[$key]);
 
                     if (isset($this->waiting[$key])) {
                         while (count($this->waiting[$key])) {
@@ -102,6 +112,10 @@ class MemoryDriver implements Driver
         return $deferred->getPromise();
     }
 
+    /**
+     * @param Deferred $deferred
+     * @param string $key
+     */
     private function wait(Deferred $deferred, $key)
     {
         if (!isset($this->waiting[$key])) {
