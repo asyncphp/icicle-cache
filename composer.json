@@ -1,0 +1,14 @@
+{
+    "require": {
+        "icicleio/socket": "^0.4.0",
+        "icicleio/concurrent": "^0.1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Icicle\\Cache\\": "src"
+        }
+    },
+    "require-dev": {
+        "icicleio/http": "^0.2.1"
+    }
+}
