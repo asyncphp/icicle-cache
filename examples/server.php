@@ -33,6 +33,10 @@ $server = new Server(function (RequestInterface $request, SocketInterface $socke
 
                 yield $data;
             }));
+
+//            $cached = (yield $cache->set("foo", function() {
+//                yield "bar";
+//            }));
         }
 
         $stream = new MemorySink();
