@@ -5,11 +5,28 @@ namespace Icicle\Cache\Driver;
 use Generator;
 use Icicle\Cache\Driver;
 use Icicle\Concurrent\Forking\Fork;
+use Icicle\Coroutine;
 use Icicle\Loop;
 use Icicle\Promise\Deferred;
+use Icicle\Promise\PromiseInterface;
 
 class MemoryDriver implements Driver
 {
+    /**
+     * @var array
+     */
+    private $get = [];
+
+    /**
+     * @var array
+     */
+    private $set = [];
+
+    /**
+     * @var array
+     */
+    private $forget = [];
+
     /**
      * @var array
      */
@@ -18,108 +35,178 @@ class MemoryDriver implements Driver
     /**
      * @var array
      */
-    private $wait = [];
+    private $busy = [];
 
     /**
-     * @param string $key
-     *
-     * @return Generator
+     * @param array $options
      */
-    public function get($key)
+    public function __construct(array $options = [])
     {
-        if ($this->waitingFor($key)) {
-            yield $this->deferredFor($key);
-        } else {
-            if (isset($this->items[$key])) {
-                yield $this->items[$key];
+        $interval = $this->getInterval($options);
+
+        Loop\periodic($interval, function () {
+            if (count($this->forget)) {
+                $this->handleForget(array_pop($this->forget));
+
+                return;
             }
 
-            yield null;
-        }
-    }
+            if (count($this->set)) {
+                $this->handleSet(array_pop($this->set));
 
-    /**
-     * @param string $key
-     * @param mixed $value
-     * @param int $expires
-     *
-     * @return Generator
-     */
-    public function set($key, $value, $expires = 0)
-    {
-        if ($this->waitingFor($key)) {
-            yield $this->deferredFor($key);
-        } else {
-            $this->wait[$key] = true;
-
-            if (!isset($this->items[$key])) {
-                if (is_callable($value)) {
-                    $fork = Fork::spawn($value);
-                    $yielded = (yield $fork->join());
-                }
-
-                $this->items[$key] = $yielded;
+                return;
             }
 
-            if ($expires > 0) {
-                $this->scheduleForget($key, $expires);
+            if (count($this->get)) {
+                $this->handleGet(array_pop($this->get));
+
+                return;
             }
-
-            $this->wait[$key] = false;
-
-            yield $this->items[$key];
-        }
-    }
-
-    /**
-     * @param string $key
-     *
-     * @return Generator
-     */
-    public function forget($key)
-    {
-        unset($this->items[$key]);
-
-        yield;
-    }
-
-    /**
-     * @param string $key
-     * @param int $expires
-     */
-    private function scheduleForget($key, $expires)
-    {
-        Loop\timer($expires, function () use ($key) {
-            $this->forget($key);
         });
     }
 
     /**
-     * @param $key
+     * @param array $options
      *
-     * @return bool
+     * @return float
      */
-    private function waitingFor($key)
+    private function getInterval(array $options = [])
     {
-        return isset($this->wait[$key]) and $this->wait[$key];
+        if (isset($options["interval"])) {
+            return $options["interval"];
+        }
+
+        return 0.0001;
     }
 
     /**
+     * @param array $parameters
+     *
+     * @return Generator
+     */
+    private function handleForget(array $parameters)
+    {
+        list($deferred, $key) = $parameters;
+
+        unset($this->items[$key]);
+
+        $deferred->resolve();
+    }
+
+    /**
+     * @param array $parameters
+     */
+    private function handleSet(array $parameters)
+    {
+        list($deferred, $key, $value) = $parameters;
+
+        if ($this->isBusy($deferred, $key)) {
+            $this->waitFor($deferred, $key);
+        } else {
+            $coroutine = Coroutine\create(function () use ($key, $value) {
+                if (is_callable($value)) {
+                    $fork = Fork::spawn($value);
+                    $value = (yield $fork->join());
+                }
+
+                $this->items[$key] = $value;
+
+                yield $value;
+            });
+
+            $coroutine->done(function ($value) use ($deferred) {
+                $deferred->resolve($value);
+            });
+        }
+    }
+
+    /**
+     * @param Deferred $deferred
      * @param string $key
      *
-     * @return Deferred
+     * @return bool
      */
-    private function deferredFor($key)
+    private function isBusy(Deferred $deferred, $key)
     {
-        $deferred = new Deferred();
+        return isset($this->busy[$key]) && $this->busy[$key] !== $deferred;
+    }
 
-        $timer = Loop\periodic(0.1, function () use (&$timer, $key, $deferred) {
+    /**
+     * @param Deferred $deferred
+     * @param string $key
+     */
+    private function waitFor(Deferred $deferred, $key)
+    {
+        $timer = Loop\periodic($this->getInterval(), function () use (&$timer, $deferred, $key) {
             if (isset($this->items[$key])) {
                 $timer->stop();
                 $deferred->resolve($this->items[$key]);
             }
         });
+    }
 
-        return $deferred;
+    /**
+     * @param array $parameters
+     *
+     * @return Generator
+     */
+    private function handleGet(array $parameters)
+    {
+        list($deferred, $key) = $parameters;
+
+        if ($this->isBusy($deferred, $key)) {
+            $this->waitFor($deferred, $key);
+        } else {
+            if (isset($this->items[$key])) {
+                $deferred->resolve($this->items[$key]);
+            }
+
+            $deferred->resolve(null);
+        }
+    }
+
+    /**
+     * @param string $key
+     *
+     * @return PromiseInterface
+     */
+    public function get($key)
+    {
+        $deferred = new Deferred();
+
+        $this->get[] = [$deferred, $key];
+
+        return $deferred->getPromise();
+    }
+
+    /**
+     * @param string $key
+     * @param mixed $value
+     *
+     * @return PromiseInterface
+     */
+    public function set($key, $value)
+    {
+        $deferred = new Deferred();
+
+        $this->busy[$key] = $deferred;
+
+        $this->set[] = [$deferred, $key, $value];
+
+        return $deferred->getPromise();
+    }
+
+    /**
+     * @param string $key
+     *
+     * @return PromiseInterface
+     */
+    public function forget($key)
+    {
+        $deferred = new Deferred();
+
+        $this->forget[] = [$deferred, $key];
+
+        return $deferred->getPromise();
     }
 }

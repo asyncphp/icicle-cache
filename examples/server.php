@@ -19,23 +19,19 @@ $server = new Server(function (RequestInterface $request, SocketInterface $socke
 
         if (!$cached) {
             $cached = (yield $cache->set("foo", function () {
-                try {
-                    $client = new Client();
+                $client = new Client();
 
-                    /** @var ResponseInterface $response */
-                    $response = (yield $client->request("GET", "https://icicle.io/"));
+                /** @var ResponseInterface $response */
+                $response = (yield $client->request("GET", "https://icicle.io/"));
 
-                    $data = "";
-                    $stream = $response->getBody();
+                $data = "";
+                $stream = $response->getBody();
 
-                    while ($stream->isReadable()) {
-                        $data .= (yield $stream->read());
-                    }
-
-                    yield $data;
-                } catch (Exception $e) {
-                    print $e->getMessage();
+                while ($stream->isReadable()) {
+                    $data .= (yield $stream->read());
                 }
+
+                yield $data;
             }));
         }
 
