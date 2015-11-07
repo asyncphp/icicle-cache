@@ -87,6 +87,8 @@ class MemoryDriver implements Driver
                 $this->wait($deferred, $key);
             } else {
                 Coroutine\create(function() use ($deferred, $key, $value) {
+                    $this->busy[$key] = $deferred;
+
                     if (is_callable($value)) {
                         $fork = Fork::spawn($value);
                         $value = (yield $fork->join());
