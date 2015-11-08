@@ -1,8 +1,8 @@
 <?php
 
-namespace Icicle\Cache\Driver;
+namespace AsyncPHP\Icicle\Cache\Driver;
 
-use Icicle\Cache\Driver;
+use AsyncPHP\Icicle\Cache\Driver;
 use Icicle\Concurrent\Forking\Fork;
 use Icicle\Coroutine;
 use Icicle\Loop;
@@ -28,9 +28,13 @@ class MemoryDriver implements Driver
     private $busy = [];
 
     /**
+     * @inheritdoc
+     *
      * @param string $key
      *
      * @return PromiseInterface
+     *
+     * @resolve mixed
      */
     public function get($key)
     {
@@ -55,7 +59,20 @@ class MemoryDriver implements Driver
      */
     private function busy(Deferred $deferred, $key)
     {
-        return isset($this->busy[$key]) and $this->busy[$key] !== $deferred;
+        return isset($this->busy[$key]) and spl_object_hash($this->busy[$key]) !== spl_object_hash($deferred);
+    }
+
+    /**
+     * @param Deferred $deferred
+     * @param string $key
+     */
+    private function wait(Deferred $deferred, $key)
+    {
+        if (!isset($this->waiting[$key])) {
+            $this->waiting[$key] = [];
+        }
+
+        $this->waiting[$key][] = $deferred;
     }
 
     /**
@@ -73,10 +90,14 @@ class MemoryDriver implements Driver
     }
 
     /**
+     * @inheritdoc
+     *
      * @param string $key
      * @param mixed $value
      *
      * @return PromiseInterface
+     *
+     * @resolve mixed
      */
     public function set($key, $value)
     {
@@ -86,7 +107,7 @@ class MemoryDriver implements Driver
             if ($this->busy($deferred, $key)) {
                 $this->wait($deferred, $key);
             } else {
-                Coroutine\create(function() use ($deferred, $key, $value) {
+                Coroutine\create(function () use ($deferred, $key, $value) {
                     $this->busy[$key] = $deferred;
 
                     if (is_callable($value)) {
@@ -115,22 +136,13 @@ class MemoryDriver implements Driver
     }
 
     /**
-     * @param Deferred $deferred
-     * @param string $key
-     */
-    private function wait(Deferred $deferred, $key)
-    {
-        if (!isset($this->waiting[$key])) {
-            $this->waiting[$key] = [];
-        }
-
-        $this->waiting[$key][] = $deferred;
-    }
-
-    /**
+     * @inheritdoc
+     *
      * @param string $key
      *
      * @return PromiseInterface
+     *
+     * @resolve void
      */
     public function forget($key)
     {

@@ -2,7 +2,7 @@
 
 require "vendor/autoload.php";
 
-use Icicle\Cache\Driver\MemoryDriver;
+use AsyncPHP\Icicle\Cache\Driver\MemoryDriver;
 use Icicle\Http\Client\Client;
 use Icicle\Http\Message\RequestInterface;
 use Icicle\Http\Message\Response;
@@ -33,10 +33,6 @@ $server = new Server(function (RequestInterface $request, SocketInterface $socke
 
                 yield $data;
             }));
-
-//            $cached = (yield $cache->set("foo", function() {
-//                yield "bar";
-//            }));
         }
 
         $stream = new MemorySink();

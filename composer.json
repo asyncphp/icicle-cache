@@ -1,14 +1,22 @@
 {
+    "name": "asyncphp/icicle-cache",
+    "license": "MIT",
     "require": {
         "icicleio/socket": "^0.4.0",
         "icicleio/concurrent": "^0.1.0"
     },
     "autoload": {
         "psr-4": {
-            "Icicle\\Cache\\": "src"
+            "AsyncPHP\\Icicle\\Cache\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "AsyncPHP\\Icicle\\Cache\\Test\\": "tests"
         }
     },
     "require-dev": {
-        "icicleio/http": "^0.2.1"
+        "icicleio/http": "^0.2.1",
+        "phpunit/phpunit": "^4.8"
     }
 }
